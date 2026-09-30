@@ -1,0 +1,174 @@
+% !TeX root = ../main.tex
+\chapter*{PHỤ LỤC}
+\addcontentsline{toc}{chapter}{PHỤ LỤC}
+\markboth{PHỤ LỤC}{PHỤ LỤC}
+
+\setcounter{chapter}{1}
+\renewcommand{\thechapter}{A}
+
+\section*{Phụ lục A. Tệp cấu hình triển khai cục bộ}
+
+\begin{lstlisting}[caption={Tệp docker-compose.yml triển khai Keycloak và PostgreSQL},label={lst:apx-compose}]
+# Trien khai cuc bo: Keycloak + PostgreSQL (docker compose up -d)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      KC_HOSTNAME: localhost
+      KC_METRICS_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+\end{lstlisting}
+
+\section*{Phụ lục B. Cấu hình realm định danh}
+
+\begin{lstlisting}[caption={Tệp demo-realm.json},label={lst:apx-realm}]
+{
+  "realm": "demo",
+  "enabled": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "otpPolicyType": "totp",
+  "otpPolicyDigits": 6,
+  "passwordPolicy": "length(8) and upperCase(1) and lowerCase(1) and digits(1)",
+  "clients": [
+    {
+      "clientId": "demo-app",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3000/callback"],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    }
+  ],
+  "roles": {
+    "realm": [ { "name": "user" }, { "name": "admin" } ]
+  },
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "credentials": [
+        { "type": "password", "value": "ChangeMe123", "temporary": true }
+      ],
+      "realmRoles": [ "user" ]
+    }
+  ]
+}
+\end{lstlisting}
+
+\section*{Phụ lục C. Pipeline tích hợp liên tục}
+
+\begin{lstlisting}[caption={Tệp ci.yml (GitHub Actions)},label={lst:apx-ci}]
+name: ci
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+      - name: Scan image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+\end{lstlisting}
+
+\section*{Phụ lục D. Manifest triển khai trên Kubernetes}
+
+\begin{lstlisting}[caption={Deployment và Service cho Keycloak},label={lst:apx-k8s}]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start", "--optimized"]
+          envFrom:
+            - secretRef: { name: keycloak-secret }
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8080 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  selector: { app: keycloak }
+  ports:
+    - port: 8080
+      targetPort: 8080
+\end{lstlisting}
+
+\section*{Phụ lục E. Kịch bản đo hiệu năng}
+
+\begin{lstlisting}[caption={Kịch bản k6 đo khả năng cấp token},label={lst:apx-k6}]
+import http from 'k6/http';
+import { check } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '30s', target: 20 },
+    { duration: '1m',  target: 50 },
+    { duration: '30s', target: 0  },
+  ],
+};
+
+export default function () {
+  const res = http.post(
+    'http://localhost:8080/realms/demo/protocol/openid-connect/token',
+    { grant_type: 'client_credentials',
+      client_id: 'demo-app',
+      client_secret: __ENV.CLIENT_SECRET }
+  );
+  check(res, { 'status 200': (r) => r.status === 200 });
+}
+\end{lstlisting}

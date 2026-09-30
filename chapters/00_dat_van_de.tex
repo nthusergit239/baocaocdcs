@@ -1,0 +1,129 @@
+% !TeX root = ../main.tex
+\chapter*{ĐẶT VẤN ĐỀ}
+\addcontentsline{toc}{chapter}{ĐẶT VẤN ĐỀ}
+\markboth{ĐẶT VẤN ĐỀ}{ĐẶT VẤN ĐỀ}
+
+\section*{1. Lý do chọn đề tài}
+
+Trong bối cảnh chuyển đổi số, một tổ chức thường vận hành đồng thời nhiều ứng
+dụng và dịch vụ khác nhau: thư điện tử, hệ thống quản trị nội bộ, cổng thông
+tin, các ứng dụng nghiệp vụ, dịch vụ đám mây, v.v. Nếu mỗi ứng dụng tự quản lý
+tài khoản riêng, người dùng phải ghi nhớ nhiều bộ tài khoản/mật khẩu, dẫn tới
+việc tái sử dụng mật khẩu, đặt mật khẩu yếu và gia tăng nguy cơ bị tấn công.
+Về phía quản trị, việc cấp phát, thu hồi và đồng bộ tài khoản thủ công trên
+nhiều hệ thống vừa tốn thời gian, vừa khó kiểm soát và dễ sai sót.
+
+Một hệ thống xác thực tập trung (xây dựng quanh một
+\textit{Identity Provider} -- IdP) cho phép nhiều ứng dụng cùng tin cậy vào
+một nguồn định danh duy nhất, hỗ trợ đăng nhập một lần (Single
+Sign-On -- SSO), tập trung hóa chính sách bảo mật như xác thực đa yếu tố
+(MFA) và cung cấp một điểm kiểm soát, giám sát duy nhất. Đây là mô hình đã
+được các tổ chức lớn áp dụng rộng rãi.
+
+Song song đó, bản thân dịch vụ xác thực là một dịch vụ có tính trọng yếu (trust-critical): nó có trạng thái (cơ sở dữ liệu, phiên), yêu cầu bảo
+mật cao và là điểm truy cập bắt buộc của mọi ứng dụng. Việc triển khai và vận
+hành dịch vụ này một cách thủ công dễ dẫn tới sai sót cấu hình, khó
+tái lập môi trường, thời gian khắc phục sự cố dài và khó mở rộng. Do đó, tự
+động hóa quá trình triển khai và vận hành dịch vụ xác thực là một bài toán có
+ý nghĩa thực tiễn rõ ràng.
+
+Từ hai nhận định trên, chuyên đề lựa chọn hướng tiếp cận kết hợp: xây dựng một
+hệ thống xác thực tập trung dựa trên Keycloak, đồng thời nghiên cứu và xây
+dựng quy trình triển khai tự động cho chính dịch vụ đó.
+
+\section*{2. Mục tiêu của chuyên đề}
+
+Chuyên đề hướng tới các mục tiêu sau:
+
+\begin{itemize}
+  \item \textbf{Mục tiêu 1:} Nghiên cứu cơ sở lý thuyết về xác thực tập trung
+  và các giao thức liên quan (OAuth 2.0, OpenID Connect), từ đó thiết kế một
+  hệ thống định danh tập trung hỗ trợ SSO dựa trên Keycloak.
+  \item \textbf{Mục tiêu 2:} Xây dựng quy trình quản lý cấu hình định danh như mã nguồn (Configuration-as-Code) và tự động hóa việc triển khai
+  dịch vụ bằng các công cụ CI/CD, IaC và GitOps.
+  \item \textbf{Mục tiêu 3:} Đánh giá hệ thống ở các khía cạnh chức năng, khả
+  năng tự động hóa và bảo mật; đề xuất hướng phát triển thành đồ án tốt nghiệp.
+\end{itemize}
+
+\section*{3. Đối tượng và phạm vi nghiên cứu}
+
+\textbf{Đối tượng nghiên cứu:} các giao thức xác thực/ủy quyền (OAuth 2.0,
+OIDC), nền tảng Keycloak, công nghệ container hóa và các phương pháp triển
+khai tự động.
+
+\textbf{Phạm vi nghiên cứu:} chuyên đề tập trung vào:
+\begin{itemize}
+  \item Xây dựng IdP tập trung với Keycloak, PostgreSQL và một ứng dụng demo
+  đóng vai trò Relying Party sử dụng luồng \textit{Authorization Code} kèm
+  PKCE.
+  \item Quản lý cấu hình định danh (realm, client, role, chính sách MFA) dưới
+  dạng mã nguồn.
+  \item Thiết kế và bước đầu hiện thực quy trình triển khai tự động trên nền
+  tảng Kubernetes (k3s) theo mô hình GitOps.
+\end{itemize}
+
+Trong khuôn khổ thời gian của chuyên đề, một số hạng mục nâng cao (đa vùng,
+cân bằng tải nâng cao, kiểm thử hiệu năng quy mô lớn) được trình bày ở mức
+thiết kế và định hướng, làm cơ sở mở rộng thành đồ án tốt nghiệp.
+
+\section*{4. Phương pháp nghiên cứu}
+
+\begin{itemize}
+  \item \textbf{Phương pháp nghiên cứu tài liệu:} đọc các đặc tả chuẩn
+  (RFC 6749, RFC 7636, OIDC Core), tài liệu Keycloak và tài liệu Kubernetes.
+  \item \textbf{Phương pháp phân tích -- thiết kế:} phân tích yêu cầu, mô hình
+  hóa kiến trúc (mô hình C4), vẽ biểu đồ tuần tự cho luồng xác thực.
+  \item \textbf{Phương pháp thực nghiệm:} triển khai hệ thống thực tế, cấu
+  hình, kiểm thử chức năng và đo lường.
+  \item \textbf{Phương pháp đánh giá:} đánh giá theo các tiêu chí chức năng,
+  hiệu năng và bảo mật (threat model STRIDE).
+\end{itemize}
+
+\section*{5. Ý nghĩa của chuyên đề}
+
+Về mặt khoa học, chuyên đề hệ thống hóa kiến thức về định danh tập trung và
+vận hành dịch vụ trọng yếu. Về mặt thực tiễn, kết quả của chuyên đề có thể
+được áp dụng để xây dựng hệ thống SSO nội bộ cho tổ chức, giảm chi phí quản
+trị và tăng cường bảo mật, đồng thời là nền tảng để phát triển thành đồ án tốt
+nghiệp ở mức độ hoàn chỉnh hơn.
+
+\section*{6. Đóng góp của chuyên đề}
+
+Chuyên đề có một số đóng góp chính: (1) hệ thống hóa cơ sở lý thuyết và so sánh
+các giải pháp định danh phổ biến; (2) thiết kế kiến trúc ba tầng kết hợp dịch vụ
+định danh với quy trình tự động hóa; (3) triển khai thực nghiệm Keycloak cùng
+cấu hình định danh như mã nguồn và ứng dụng demo SSO; và (4) xây dựng khung
+quy trình CI/CD, GitOps, giám sát cùng phân tích bảo mật theo STRIDE.
+
+\section*{7. Kế hoạch thực hiện}
+
+Bảng~\ref{tab:kehoach} trình bày kế hoạch thực hiện chuyên đề theo giai đoạn.
+
+\begin{table}[H]
+\centering
+\caption{Kế hoạch thực hiện chuyên đề theo giai đoạn}
+\label{tab:kehoach}
+\small
+\begin{tabular}{c p{8cm} c}
+\toprule
+\textbf{Giai đoạn} & \textbf{Nội dung} & \textbf{Thời gian}\\
+\midrule
+1 & Nghiên cứu lý thuyết và khảo sát công nghệ & Tuần 1--2\\
+2 & Phân tích yêu cầu và thiết kế kiến trúc & Tuần 3--4\\
+3 & Triển khai dịch vụ định danh và ứng dụng demo & Tuần 5--7\\
+4 & Tự động hóa và quản lý cấu hình như mã nguồn & Tuần 8--10\\
+5 & Đánh giá và hoàn thiện báo cáo & Tuần 11--14\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{8. Bố cục báo cáo}
+
+Ngoài phần Đặt vấn đề và Kết luận, báo cáo được tổ chức thành bốn chương:
+\begin{itemize}
+  \item \textbf{Chương 1} trình bày cơ sở lý thuyết về xác thực tập trung,
+  giao thức OAuth 2.0/OIDC, Keycloak và triển khai tự động.
+  \item \textbf{Chương 2} phân tích yêu cầu và thiết kế kiến trúc hệ thống.
+  \item \textbf{Chương 3} trình bày quá trình triển khai và cấu hình hệ thống.
+  \item \textbf{Chương 4} đánh giá kết quả và thảo luận.
+\end{itemize}

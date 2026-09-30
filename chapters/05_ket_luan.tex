@@ -1,0 +1,79 @@
+% !TeX root = ../main.tex
+\chapter*{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+\addcontentsline{toc}{chapter}{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+\markboth{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}{KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN}
+
+\section*{1. Kết quả đạt được}
+
+Trong khuôn khổ chuyên đề, các kết quả chính đã đạt được bao gồm:
+
+\begin{itemize}
+  \item Hệ thống hóa cơ sở lý thuyết về xác thực tập trung, giao thức OAuth 2.0
+  và OpenID Connect, cũng như các phương pháp triển khai tự động.
+  \item Thiết kế kiến trúc ba tầng cho hệ thống định danh tập trung dựa trên
+  Keycloak, với điểm nhấn là quản lý cấu hình định danh như mã nguồn.
+  \item Triển khai thành công dịch vụ Keycloak cùng PostgreSQL và ứng dụng
+  demo, minh họa luồng đăng nhập SSO qua OIDC với PKCE.
+  \item Xây dựng được quy trình CI/CD và định hướng triển khai theo mô hình
+  GitOps trên Kubernetes (k3s).
+  \item Đánh giá hệ thống về chức năng và bảo mật, đề xuất khung đo lường hiệu
+  năng cho giai đoạn tiếp theo.
+\end{itemize}
+
+Bảng~\ref{tab:muctieu} đối chiếu các mục tiêu đặt ra với kết quả đạt được.
+
+\begin{table}[htbp]
+\centering
+\caption{Đối chiếu mục tiêu và kết quả đạt được}
+\label{tab:muctieu}
+\small
+\begin{tabular}{p{6cm} p{4.2cm} p{2.6cm}}
+\toprule
+\textbf{Mục tiêu} & \textbf{Kết quả} & \textbf{Mức độ}\\
+\midrule
+Xây dựng hệ thống định danh tập trung & Đã triển khai Keycloak, SSO OIDC & Đạt\\
+Quản lý cấu hình như mã nguồn & Realm JSON và config-cli & Đạt\\
+Tự động hóa triển khai & CI/CD, thiết kế GitOps & Đạt một phần\\
+Đánh giá bảo mật & Phân tích STRIDE và biện pháp & Đạt\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{2. Hạn chế}
+
+Bên cạnh kết quả đạt được, chuyên đề còn một số hạn chế:
+
+\begin{itemize}
+  \item Hệ thống mới được kiểm thử ở quy mô nhỏ, chưa đánh giá đầy đủ dưới tải
+  cao và trong điều kiện nhiều bản sao.
+  \item Một số hạng mục tự động hóa (IaC, GitOps, giám sát) mới dừng ở mức
+  thiết kế, chưa hoàn thiện và vận hành ổn định.
+  \item Chưa triển khai các cơ chế nâng cao như liên kết định danh (SAML/LDAP),
+  zero-trust giữa các dịch vụ, hay đa vùng dự phòng.
+  \item Phân tích hiệu năng và bảo mật còn ở mức định tính, cần bổ sung số liệu
+  định lượng.
+\end{itemize}
+
+\section*{3. Hướng phát triển}
+
+Trên cơ sở các kết quả và hạn chế nêu trên, hướng phát triển thành đồ án tốt
+nghiệp bao gồm:
+
+\begin{itemize}
+  \item \textbf{Hoàn thiện tự động hóa:} xây dựng đầy đủ IaC (Terraform,
+  Ansible), GitOps hoàn chỉnh với ArgoCD và quản lý bí mật bằng Vault/Sealed
+  Secrets.
+  \item \textbf{Tăng cường tính sẵn sàng cao:} cấu hình nhiều bản sao Keycloak,
+  sao chép PostgreSQL, kiểm thử khả năng tự phục hồi và cân bằng tải.
+  \item \textbf{Đo lường định lượng:} sử dụng k6/Locust để đo độ trễ, thông
+  lượng và MTTR; trực quan hóa bằng Grafana.
+  \item \textbf{Mở rộng bảo mật:} triển khai zero-trust với mTLS giữa các dịch
+  vụ, liên kết định danh với LDAP/Active Directory và đăng nhập WebAuthn.
+  \item \textbf{Mở rộng quy mô:} nghiên cứu triển khai đa vùng và kịch bản dự
+  phòng thảm họa (DR) với các chỉ tiêu RTO/RPO.
+\end{itemize}
+
+\vspace{0.5cm}
+Tóm lại, chuyên đề đã xây dựng được nền tảng vững chắc cho một hệ thống xác
+thực tập trung có khả năng triển khai tự động, đồng thời mở ra nhiều hướng
+nghiên cứu và phát triển phù hợp với định hướng kỹ thuật hệ thống và bảo mật.

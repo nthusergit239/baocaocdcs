@@ -1,0 +1,552 @@
+% !TeX root = ../main.tex
+\chapter{TRIỂN KHAI VÀ CẤU HÌNH HỆ THỐNG}
+\label{ch:trienkhai}
+
+\section{Môi trường và công cụ}
+\label{sec:moitruong}
+
+Hệ thống được triển khai thử nghiệm trên máy cá nhân chạy hệ điều hành Linux,
+với các công cụ chính được liệt kê trong Bảng~\ref{tab:tools}.
+
+\begin{table}[htbp]
+\centering
+\caption{Các công cụ và công nghệ sử dụng}
+\label{tab:tools}
+\small
+\begin{tabular}{p{3.2cm} p{3.2cm} p{6.4cm}}
+\toprule
+\textbf{Thành phần} & \textbf{Công nghệ} & \textbf{Vai trò}\\
+\midrule
+Nhà cung cấp định danh & Keycloak 26 & Cung cấp OIDC/OAuth2, SSO, MFA\\
+Cơ sở dữ liệu & PostgreSQL 16 & Lưu trữ dữ liệu người dùng, realm\\
+Container & Docker & Đóng gói và chạy dịch vụ\\
+Orchestration & k3s & Cụm Kubernetes nhẹ\\
+Quản lý gói K8s & Helm & Triển khai Keycloak theo chart\\
+CI/CD & GitHub Actions & Tự động hóa kiểm thử và build\\
+GitOps & ArgoCD & Đồng bộ trạng thái từ Git\\
+Giám sát & Prometheus/Grafana & Thu thập và trực quan hóa chỉ số\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Triển khai Keycloak và PostgreSQL bằng Docker Compose}
+\label{sec:compose}
+
+Ở giai đoạn đầu, Keycloak và PostgreSQL được triển khai cục bộ bằng Docker
+Compose nhằm làm quen và kiểm thử luồng xác thực trước khi đưa lên Kubernetes.
+Mã nguồn cấu hình tham khảo được trình bày trong
+Đoạn mã~\ref{lst:compose}.
+
+\begin{lstlisting}[caption={Cấu hình Docker Compose cho Keycloak và PostgreSQL},label={lst:compose}]
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      KC_HOSTNAME: localhost
+      KC_METRICS_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+\end{lstlisting}
+
+Việc tách cấu hình nhạy cảm (mật khẩu) ra biến môi trường giúp tránh đưa thông
+tin bí mật vào mã nguồn -- một yêu cầu quan trọng của thiết kế an toàn.
+
+\subsection{Kiểm tra và xác thực dịch vụ}
+\label{subsec:kiemtra}
+
+Sau khi khởi chạy, cần kiểm tra dịch vụ hoạt động đúng trước khi cấu hình ứng
+dụng. Đoạn mã~\ref{lst:check} minh họa việc đọc tài liệu khám phá OIDC và xin
+token bằng luồng client credentials.
+
+\begin{lstlisting}[caption={Kiểm tra điểm cuối OIDC của Keycloak},label={lst:check}]
+# Doc tai lieu discovery
+curl -s http://localhost:8080/realms/demo/.well-known/openid-configuration | jq .
+
+# Xin token bang client credentials
+curl -s -X POST \
+  http://localhost:8080/realms/demo/protocol/openid-connect/token \
+  -d grant_type=client_credentials \
+  -d client_id=demo-app \
+  -d client_secret=$CLIENT_SECRET | jq .
+\end{lstlisting}
+
+\section{Cấu hình định danh như mã nguồn}
+\label{sec:realm}
+
+Cấu hình realm, client và role được mô tả trong một tệp JSON và nạp tự động
+khi Keycloak khởi động (tham số \texttt{--import-realm}). Một phần nội dung
+được minh họa trong Đoạn mã~\ref{lst:realm}.
+
+\begin{lstlisting}[caption={Trích tệp cấu hình realm dưới dạng mã nguồn},label={lst:realm}]
+{
+  "realm": "demo",
+  "enabled": true,
+  "sslRequired": "external",
+  "accessTokenLifespan": 300,
+  "otpPolicyType": "totp",
+  "clients": [
+    {
+      "clientId": "demo-app",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:3000/callback"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "user" },
+      { "name": "admin" }
+    ]
+  }
+}
+\end{lstlisting}
+
+Trong giai đoạn nâng cao, cấu hình này được quản lý bằng
+\texttt{keycloak-config-cli}~\cite{kc-config-cli} hoặc Keycloak Terraform
+Provider~\cite{tf-keycloak} để có thể áp dụng lặp lại (idempotent) và kiểm soát
+phiên bản chặt chẽ hơn.
+
+\subsection{Áp dụng cấu hình tự động với keycloak-config-cli}
+\label{subsec:configcli}
+
+Để cấu hình được áp dụng lặp lại và tự động (idempotent), công cụ
+\texttt{keycloak-config-cli} được sử dụng. Công cụ này đọc các tệp JSON từ một
+thư mục và đồng bộ chúng lên Keycloak, phù hợp để tích hợp vào pipeline CI.
+Đoạn mã~\ref{lst:configcli} minh họa cách gọi công cụ.
+
+\begin{lstlisting}[caption={Áp dụng cấu hình realm bằng keycloak-config-cli},label={lst:configcli}]
+docker run --rm \
+  -e KEYCLOAK_URL=http://keycloak:8080 \
+  -e KEYCLOAK_USER=admin \
+  -e KEYCLOAK_PASSWORD=$KC_ADMIN_PASSWORD \
+  -v $(pwd)/realm:/config \
+  quay.io/adorsys/keycloak-config-cli:latest \
+  --import.files.locations=/config/demo-realm.json
+\end{lstlisting}
+
+Nhờ cách tiếp cận này, mọi thay đổi cấu hình đều đi qua Git, có thể xem lại
+lịch sử và khôi phục khi cần, thay vì thao tác thủ công trên giao diện quản trị.
+
+\section{Ứng dụng demo và đăng nhập SSO}
+\label{sec:appdemo}
+
+Ứng dụng demo đóng vai trò Relying Party, sử dụng thư viện OIDC để thực hiện
+luồng Authorization Code kèm PKCE với Keycloak. Sau khi đăng nhập thành công,
+ứng dụng nhận ID Token, xác thực chữ ký token và hiển thị thông tin người dùng
+(họ tên, email, vai trò). Đây là kịch bản minh họa trực quan cho tính năng SSO
+của hệ thống.
+
+% TODO: Chèn ảnh chụp màn hình (1) trang đăng nhập Keycloak,
+%       (2) màn hình ứng dụng demo sau khi đăng nhập.
+
+\subsection{Mã nguồn ứng dụng demo}
+\label{subsec:appcode}
+
+Ứng dụng demo được viết bằng Node.js với thư viện \texttt{openid-client}, thực
+hiện luồng Authorization Code kèm PKCE. Đoạn mã~\ref{lst:app} trình bày phần
+xử lý đăng nhập và nhận token.
+
+\begin{lstlisting}[caption={Xu ly dang nhap OIDC trong ung dung demo (Node.js)},label={lst:app}]
+const express = require('express');
+const session = require('express-session');
+const { Issuer, generators } = require('openid-client');
+
+const app = express();
+app.use(session({ secret: process.env.SESSION_SECRET,
+  resave: false, saveUninitialized: false }));
+
+let client;
+async function init() {
+  const issuer = await Issuer.discover('http://localhost:8080/realms/demo');
+  client = new issuer.Client({
+    client_id: 'demo-app',
+    client_secret: process.env.CLIENT_SECRET,
+    redirect_uris: ['http://localhost:3000/callback'],
+    response_types: ['code']
+  });
+}
+
+app.get('/login', (req, res) => {
+  const code_verifier = generators.codeVerifier();
+  const code_challenge = generators.codeChallenge(code_verifier);
+  req.session.code_verifier = code_verifier;
+  const url = client.authorizationUrl({
+    scope: 'openid profile email',
+    code_challenge,
+    code_challenge_method: 'S256'
+  });
+  res.redirect(url);
+});
+
+app.get('/callback', async (req, res) => {
+  const params = client.callbackParams(req);
+  const tokenSet = await client.callback(
+    'http://localhost:3000/callback', params,
+    { code_verifier: req.session.code_verifier });
+  req.session.user = tokenSet.claims();
+  res.redirect('/');
+});
+
+init().then(() => app.listen(3000));
+\end{lstlisting}
+
+\section{Đóng gói và triển khai trên Kubernetes}
+\label{sec:k8s-deploy}
+
+Sau khi kiểm thử cục bộ, hệ thống được thiết kế để triển khai trên cụm k3s.
+Keycloak được triển khai thông qua Helm chart với các giá trị tùy biến
+(Đoạn mã~\ref{lst:helm}), cho phép cấu hình số bản sao, tài nguyên và kết nối
+cơ sở dữ liệu.
+
+\begin{lstlisting}[caption={Trích tệp values.yaml cho Helm chart Keycloak},label={lst:helm}]
+replicas: 2
+image:
+  repository: quay.io/keycloak/keycloak
+  tag: "26.0"
+command:
+  - start
+  - --optimized
+extraEnv: |
+  - name: KC_DB
+    value: postgres
+  - name: KC_HEALTH_ENABLED
+    value: "true"
+  - name: KC_METRICS_ENABLED
+    value: "true"
+resources:
+  requests:
+    cpu: "250m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+\end{lstlisting}
+
+\subsection{Manifest triển khai Keycloak}
+\label{subsec:manifest}
+
+Đoạn mã~\ref{lst:k8sdeploy} và~\ref{lst:k8ssvc} trình bày manifest Deployment
+và Service cho Keycloak, kèm các đầu dò sức khỏe để Kubernetes tự phát hiện Pod
+lỗi.
+
+\begin{lstlisting}[caption={Manifest Deployment cho Keycloak},label={lst:k8sdeploy}]
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start", "--optimized"]
+          envFrom:
+            - secretRef:
+                name: keycloak-secret
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 8080 }
+          livenessProbe:
+            httpGet: { path: /health/live, port: 8080 }
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Service, Ingress và HorizontalPodAutoscaler},label={lst:k8ssvc}]
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: keycloak
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+\end{lstlisting}
+
+\section{Tự động hóa bằng CI/CD và GitOps}
+\label{sec:cicd}
+
+Quy trình CI/CD được xây dựng bằng GitHub Actions. Mỗi lần đẩy mã nguồn, hệ
+thống tự động kiểm thử, xây dựng image ứng dụng và đẩy lên registry
+(Đoạn mã~\ref{lst:ci}).
+
+\begin{lstlisting}[caption={Trích quy trình CI bằng GitHub Actions},label={lst:ci}]
+name: ci
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+      - name: Scan image
+        run: trivy image ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - name: Push image
+        run: docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+\end{lstlisting}
+
+Về phía triển khai, ArgoCD~\cite{argocd} theo dõi kho Git chứa manifest và tự
+động đồng bộ lên cụm k3s (Đoạn mã~\ref{lst:argo}). Nhờ vậy, trạng thái của hệ
+thống luôn phản ánh đúng cấu hình trong Git.
+
+\begin{lstlisting}[caption={Khai báo ứng dụng ArgoCD},label={lst:argo}]
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<user>/<repo>.git
+    path: k8s/keycloak
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: identity
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+\end{lstlisting}
+
+\section{Giám sát và vận hành}
+\label{sec:giamsat}
+
+Để vận hành dịch vụ định danh một cách tin cậy, cần thu thập chỉ số và log.
+Keycloak hỗ trợ xuất chỉ số qua điểm cuối \texttt{/metrics} khi được bật. Cấu
+hình Prometheus thu thập các chỉ số này được minh họa trong
+Đoạn mã~\ref{lst:prom}.
+
+\begin{lstlisting}[caption={Cấu hình Prometheus thu thập chỉ số Keycloak},label={lst:prom}]
+scrape_configs:
+  - job_name: keycloak
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["keycloak.identity.svc:8080"]
+\end{lstlisting}
+
+Trên Grafana, các bảng theo dõi chính gồm: số lần đăng nhập thành công/thất bại,
+tỉ lệ cấp token, độ trễ xử lý yêu cầu, mức sử dụng CPU/bộ nhớ của các Pod và số
+lượng phiên đang hoạt động. Việc giám sát giúp phát hiện sớm bất thường như tấn
+công dò mật khẩu hoặc quá tải dịch vụ.
+
+\section{Quản lý TLS với cert-manager}
+\label{sec:tls}
+
+Để đảm bảo mọi kết nối đều được mã hóa, chứng chỉ TLS được cấp và gia hạn tự
+động thông qua cert-manager kết hợp với Let's Encrypt. Đoạn mã~\ref{lst:issuer}
+trình bày khai báo một ClusterIssuer.
+
+\begin{lstlisting}[caption={Khai bao ClusterIssuer cho Let's Encrypt},label={lst:issuer}]
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+\end{lstlisting}
+
+Ingress của Keycloak và ứng dụng demo chỉ cần khai báo annotation tương ứng, hệ
+thống sẽ tự động lấy và gia hạn chứng chỉ mà không cần thao tác thủ công.
+
+\section{Quản lý bí mật và cấu trúc kho GitOps}
+\label{sec:gitops-secret}
+
+Để có thể lưu bí mật an toàn trong Git, giải pháp Sealed Secrets được sử dụng:
+bí mật được mã hóa bằng khóa công khai của cụm và chỉ có thể giải mã bởi
+controller trong cụm. Đoạn mã~\ref{lst:sealed} minh họa một SealedSecret.
+
+\begin{lstlisting}[caption={Vi du mot SealedSecret},label={lst:sealed}]
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: keycloak-secret
+  namespace: identity
+spec:
+  encryptedData:
+    KC_DB_PASSWORD: AgBy3i4OJSWK+PiTySY...
+\end{lstlisting}
+
+Kho GitOps được tổ chức theo mô hình base/overlay để tái sử dụng cấu hình giữa
+các môi trường, như minh họa trong Đoạn mã~\ref{lst:gitrepo}.
+
+\begin{lstlisting}[caption={Cau truc kho GitOps},label={lst:gitrepo}]
+gitops/
+|-- apps/
+|   |-- keycloak/
+|   `-- demo-app/
+|-- base/
+|   `-- keycloak/
+`-- overlays/
+    |-- dev/
+    `-- prod/
+\end{lstlisting}
+
+\section{Quy trình triển khai từng bước}
+\label{sec:quytrinh}
+
+Quy trình triển khai từ mã nguồn tới môi trường chạy gồm các bước: (1) lập
+trình viên đẩy thay đổi lên Git; (2) CI chạy kiểm thử và build image; (3) image
+được đẩy lên registry; (4) manifest được cập nhật; (5) ArgoCD phát hiện và đồng
+bộ lên cụm; (6) Kubernetes thực hiện cuốn chiếu; (7) hệ thống giám sát ghi nhận
+trạng thái. Mỗi bước đều có thể kiểm tra và quay lui khi cần.
+
+\section{Kiểm thử khả năng tự phục hồi}
+\label{sec:recovery}
+
+Để kiểm chứng khả năng tự phục hồi, có thể xóa một Pod của Keycloak và quan sát
+Kubernetes tự tạo Pod mới. Bảng~\ref{tab:mttr} ghi nhận kết quả kiểm thử theo
+chỉ số thời gian phục hồi trung bình (MTTR), đồng thời kiểm tra dịch vụ không
+gián đoạn nhờ các bản sao còn lại.
+
+\begin{table}[htbp]
+\centering
+\caption{Kết quả kiểm thử tự phục hồi (khung ghi nhận)}
+\label{tab:mttr}
+\small
+\begin{tabular}{p{5.4cm} p{3.2cm} p{3.8cm}}
+\toprule
+\textbf{Kịch bản} & \textbf{MTTR} & \textbf{Gián đoạn}\\
+\midrule
+Xóa một Pod Keycloak & (đo) & Không\\
+Xóa Pod cơ sở dữ liệu & (đo) & Ngắn\\
+Cuốn chiếu phiên bản mới & (đo) & Không\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Triển khai cơ sở dữ liệu và bảo mật mạng}
+\label{sec:postgres-k8s}
+
+Cơ sở dữ liệu PostgreSQL được triển khai bằng StatefulSet để đảm bảo dữ liệu
+được lưu trên vùng nhớ ổn định (Đoạn mã~\ref{lst:pg}). Song song đó, chính sách
+mạng (NetworkPolicy) được áp dụng để chỉ cho phép Keycloak kết nối tới cơ sở dữ
+liệu, giảm bề mặt tấn công (Đoạn mã~\ref{lst:netpol}).
+
+\begin{lstlisting}[caption={Manifest StatefulSet cho PostgreSQL},label={lst:pg}]
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: identity
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef: { name: postgres-secret }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 5Gi }
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Chinh sach mang gioi han truy cap co so du lieu},label={lst:netpol}]
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-keycloak-to-postgres
+  namespace: identity
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: keycloak }
+      ports:
+        - port: 5432
+\end{lstlisting}
+
+\section{Kết chương}
+
+Chương này đã trình bày quá trình triển khai hệ thống từ môi trường cục bộ với
+Docker Compose, cấu hình định danh như mã nguồn, ứng dụng demo SSO, cho tới
+thiết kế triển khai trên Kubernetes cùng quy trình CI/CD và GitOps. Chương tiếp
+theo đánh giá kết quả đạt được và phân tích các khía cạnh bảo mật.

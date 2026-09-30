@@ -1,0 +1,185 @@
+% =============================================================
+%  ĐỒ ÁN: XÂY DỰNG HỆ THỐNG XÁC THỰC TẬP TRUNG DỰA TRÊN KEYCLOAK
+%         VỚI QUY TRÌNH TRIỂN KHAI TỰ ĐỘNG
+%  Sinh viên : NGUYỄN TRỌNG HÒA  -  Lớp 68MHT2  -  MSSV 0011468
+%  GVHD       : ThS. NGUYỄN VIỆT NHẬT
+%  Biên dịch  : pdfLaTeX (mặc định của Overleaf)
+% =============================================================
+\documentclass[12pt,a4paper]{report}
+
+% ---------- Ngôn ngữ & mã hóa ----------
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage[T5]{fontenc}
+
+% ---------- Cỡ chữ 13pt & giãn dòng 1.2 ----------
+\usepackage[fontsize=13pt]{scrextend}
+\usepackage{setspace}
+
+% ---------- Lề theo quy định của Khoa ----------
+\usepackage[a4paper, top=2.5cm, bottom=2.5cm, left=3.5cm, right=2cm]{geometry}
+
+% ---------- Font Times New Roman (tương đương) ----------
+\usepackage{mathptmx}
+
+% ---------- Đồ họa, bảng, sơ đồ ----------
+\usepackage{graphicx}
+\usepackage{float}
+% Cho phép bảng/hình linh hoạt để lấp đầy trang
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{4}
+\setcounter{totalnumber}{6}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.07}
+\renewcommand{\floatpagefraction}{0.75}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,calc}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+
+% ---------- Mã nguồn ----------
+\usepackage{xcolor}
+\usepackage{listings}
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codekw}{RGB}{0,0,180}
+\definecolor{codecm}{RGB}{0,128,0}
+\definecolor{codestr}{RGB}{160,32,32}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{codekw}\bfseries,
+  commentstyle=\color{codecm}\itshape,
+  stringstyle=\color{codestr},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  frame=single,
+  showstringspaces=false,
+  tabsize=2,
+  columns=fullflexible,
+  captionpos=b
+}
+
+% ---------- Tiêu đề hình / bảng ----------
+\usepackage{caption}
+\DeclareCaptionLabelSeparator{dash}{ - }
+\captionsetup{labelsep=dash, font=small}
+\captionsetup[table]{position=top}
+
+% ---------- Header / Footer ----------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[R]{\small Xây dựng hệ thống xác thực tập trung}
+\fancyfoot[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{15pt}
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyfoot[R]{\thepage}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+% ---------- Thụt lề đầu đoạn ----------
+\usepackage{indentfirst}
+
+% ---------- Định dạng tiêu đề chương/mục (cân đối hơn) ----------
+\usepackage{titlesec}
+
+% Chương có số
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\centering}
+  {\fontsize{14}{16}\selectfont\chaptername\ \thechapter}
+  {6pt}
+  {\fontsize{16}{20}\selectfont}
+\titlespacing*{\chapter}{0pt}{0pt}{20pt}
+
+% Chương không số (ĐẶT VẤN ĐỀ, KẾT LUẬN, MỤC LỤC, ...)
+\titleformat{name=\chapter,numberless}[display]
+  {\normalfont\bfseries\centering}
+  {}{0pt}
+  {\fontsize{16}{20}\selectfont}
+\titlespacing*{name=\chapter,numberless}{0pt}{0pt}{20pt}
+
+% Mục cấp 2
+\titleformat{\section}
+  {\normalfont\bfseries\fontsize{14}{17}\selectfont}
+  {\thesection}{0.6em}{}
+\titlespacing*{\section}{0pt}{12pt}{6pt}
+
+% Mục cấp 3
+\titleformat{\subsection}
+  {\normalfont\bfseries\fontsize{13}{16}\selectfont}
+  {\thesubsection}{0.6em}{}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+
+% Mục cấp 4
+\titleformat{\subsubsection}
+  {\normalfont\bfseries\fontsize{13}{16}\selectfont}
+  {\thesubsubsection}{0.6em}{}
+\titlespacing*{\subsubsection}{0pt}{8pt}{3pt}
+
+% ---------- Tên các mục tiếng Việt ----------
+\renewcommand{\contentsname}{MỤC LỤC}
+\renewcommand{\listfigurename}{DANH MỤC HÌNH VẼ, ĐỒ THỊ}
+\renewcommand{\listtablename}{DANH MỤC BẢNG BIỂU}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\tablename}{Bảng}
+\renewcommand{\chaptername}{Chương}
+\renewcommand{\lstlistingname}{Đoạn mã}
+
+% ---------- Tài liệu tham khảo (chuẩn IEEE) ----------
+\usepackage[backend=biber,style=ieee]{biblatex}
+\addbibresource{refs.bib}
+
+% ---------- Hyperlink (đặt cuối cùng) ----------
+\usepackage[hidelinks]{hyperref}
+
+% =============================================================
+\begin{document}
+\setstretch{1.2}
+
+% ===================== PHẦN ĐẦU =====================
+\pagestyle{empty}
+\input{frontmatter/bia}
+
+% Đánh số trang bằng SỐ THƯỜNG (Arabic) và liên tục cho toàn bộ tài liệu
+\pagenumbering{arabic}
+\input{frontmatter/loi_cam_doan}
+\input{frontmatter/loi_cam_on}
+
+\pagestyle{fancy}
+\clearpage
+\tableofcontents
+
+\clearpage
+\input{frontmatter/danh_muc_tu_viet_tat}
+
+\clearpage
+\listoffigures
+
+\clearpage
+\listoftables
+
+% ===================== PHẦN NỘI DUNG =====================
+\clearpage
+\input{chapters/00_dat_van_de}
+\input{chapters/01_tong_quan}
+\input{chapters/02_phan_tich_thiet_ke}
+\input{chapters/03_trien_khai}
+\input{chapters/04_danh_gia}
+\input{chapters/05_ket_luan}
+
+% ===================== TÀI LIỆU THAM KHẢO =====================
+\clearpage
+\printbibliography[heading=bibintoc,title={TÀI LIỆU THAM KHẢO}]
+
+% ===================== PHỤ LỤC =====================
+\clearpage
+\appendix
+\input{chapters/phu_luc}
+
+\end{document}

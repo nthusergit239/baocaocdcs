@@ -1,0 +1,184 @@
+% !TeX root = ../main.tex
+\chapter{ĐÁNH GIÁ KẾT QUẢ VÀ THẢO LUẬN}
+\label{ch:danhgia}
+
+\section{Phương pháp đánh giá}
+\label{sec:ppdg}
+
+Hệ thống được đánh giá theo ba khía cạnh. Thứ nhất, về \textbf{chức năng}, các
+ca kiểm thử được thực hiện cho luồng đăng nhập SSO, cơ chế cấu hình realm tự
+động và xác thực đa yếu tố. Thứ hai, về \textbf{bảo mật}, các mối đe dọa được
+phân tích theo mô hình STRIDE và đối chiếu với biện pháp đã triển khai. Thứ ba,
+về \textbf{vận hành}, mức độ tự động hóa và khả năng tái lập của hệ thống được
+đánh giá. Việc kiểm thử được tiến hành trên môi trường triển khai cục bộ (Docker
+Compose) và môi trường cụm (k3s).
+
+\section{Kết quả kiểm thử chức năng}
+\label{sec:ketqua-cn}
+
+Bảng~\ref{tab:testcases} trình bày các ca kiểm thử chức năng đã thực hiện cùng
+kết quả thu được.
+
+\begin{table}[htbp]
+\centering
+\caption{Kết quả kiểm thử chức năng}
+\label{tab:testcases}
+\small
+\begin{tabular}{c p{4.4cm} p{2.4cm} p{4.0cm}}
+\toprule
+\textbf{Mã} & \textbf{Ca kiểm thử} & \textbf{Kết quả} & \textbf{Ghi nhận}\\
+\midrule
+TC1 & Đăng nhập đúng thông tin & Đạt & Nhận token và truy cập ứng dụng\\
+TC2 & Đăng nhập sai mật khẩu & Đạt & Bị từ chối và có ghi log\\
+TC3 & Xác thực bằng mã TOTP & Đạt & Yêu cầu nhập đúng mã\\
+TC4 & Access token hết hạn & Đạt & Bị từ chối hoặc được làm mới\\
+TC5 & Áp dụng cấu hình realm từ JSON & Đạt & Realm được cập nhật theo mã nguồn\\
+TC6 & Chạy nhiều bản sao & Đạt & Các Pod cùng phục vụ, phiên ổn định\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Kết quả cho thấy các chức năng cốt lõi của hệ thống hoạt động đúng như thiết kế.
+Bảng~\ref{tab:ketqua} đối chiếu kết quả này với các yêu cầu chức năng đã đặt ra
+ở Chương~\ref{ch:thietke}.
+
+\begin{table}[htbp]
+\centering
+\caption{Đối chiếu yêu cầu chức năng và kết quả}
+\label{tab:ketqua}
+\small
+\begin{tabular}{c p{8.2cm} c}
+\toprule
+\textbf{Mã} & \textbf{Yêu cầu} & \textbf{Kết quả}\\
+\midrule
+FN1 & Dịch vụ định danh tập trung với Keycloak & Đạt\\
+FN2 & Đăng nhập SSO vào ứng dụng demo qua OIDC & Đạt\\
+FN3 & Quản lý realm/client/role/user như mã nguồn & Đạt\\
+FN4 & Xác thực đa yếu tố (TOTP) & Đạt\\
+FN5 & Áp dụng cấu hình tự động qua CI/CD & Đạt\\
+FN6 & Ứng dụng demo hiển thị thông tin từ token & Đạt\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% TODO: chèn ảnh chụp màn hình minh chứng cho các ca kiểm thử.
+
+\section{Đánh giá bảo mật}
+\label{sec:stride}
+
+Các mối đe dọa được phân tích theo mô hình STRIDE và đối chiếu với biện pháp đã
+áp dụng trong hệ thống (Bảng~\ref{tab:stride}).
+
+\begin{table}[htbp]
+\centering
+\caption{Phân tích mối đe dọa theo STRIDE}
+\label{tab:stride}
+\small
+\begin{tabular}{p{2.4cm} p{5.0cm} p{5.4cm}}
+\toprule
+\textbf{Loại} & \textbf{Mối đe dọa} & \textbf{Biện pháp đã áp dụng}\\
+\midrule
+Spoofing & Giả mạo người dùng, đánh cắp phiên & MFA, thời hạn token ngắn, PKCE\\
+Tampering & Sửa đổi token hoặc cấu hình & Chữ ký JWT, cấu hình quản lý qua Git\\
+Repudiation & Phủ nhận hành động & Ghi log kiểm toán của Keycloak\\
+Information disclosure & Lộ dữ liệu nhạy cảm & TLS, bí mật tách khỏi mã nguồn\\
+Denial of service & Làm quá tải IdP & Giới hạn tần suất, chạy nhiều bản sao\\
+Elevation of privilege & Leo thang đặc quyền & RBAC, đặc quyền tối thiểu, NetworkPolicy\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Kết quả phân tích cho thấy việc kết hợp SSO tập trung, MFA, TLS và quản lý bí
+mật giúp giảm đáng kể bề mặt tấn công so với việc mỗi ứng dụng tự lưu trữ thông
+tin xác thực.
+
+\section{Đánh giá mức độ tự động hóa}
+\label{sec:autoscore}
+
+Bảng~\ref{tab:autoscore} tổng hợp mức độ tự động hóa đạt được đối với từng hạng
+mục của hệ thống.
+
+\begin{table}[htbp]
+\centering
+\caption{Mức độ tự động hóa đạt được}
+\label{tab:autoscore}
+\small
+\begin{tabular}{p{6.0cm} p{2.8cm} p{3.8cm}}
+\toprule
+\textbf{Hạng mục} & \textbf{Mức độ} & \textbf{Hình thức}\\
+\midrule
+Xây dựng image & Đạt & Pipeline CI (GitHub Actions)\\
+Quản lý cấu hình định danh & Đạt & Realm JSON và keycloak-config-cli\\
+Triển khai lên cụm & Đạt & Helm và manifest Kubernetes\\
+Đồng bộ theo GitOps & Đạt & ArgoCD\\
+Đo lường và giám sát & Đạt & Điểm cuối /metrics của Keycloak\\
+Quản lý bí mật & Chưa & Biến môi trường\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Đánh giá hiệu năng}
+\label{sec:hieunang}
+
+Để đánh giá sơ bộ khả năng đáp ứng của dịch vụ định danh, kịch bản sinh tải bằng
+k6 (trình bày ở Phụ lục~\ref{lst:apx-k6}) được sử dụng để gửi yêu cầu cấp token
+tới Keycloak với mức tải tăng dần. Kết quả ghi nhận cho thấy dịch vụ phản hồi ổn
+định và không phát sinh lỗi trong suốt thời gian kiểm thử. Việc đo đạc định
+lượng chi tiết được xác định là nội dung tiếp tục của giai đoạn phát triển.
+
+\section{So sánh với phương án triển khai thủ công}
+\label{sec:sosanh}
+
+Bảng~\ref{tab:ss-trienkhai} so sánh phương án triển khai tự động đã xây dựng
+với cách triển khai thủ công truyền thống.
+
+\begin{table}[htbp]
+\centering
+\caption{So sánh triển khai thủ công và tự động}
+\label{tab:ss-trienkhai}
+\small
+\begin{tabular}{p{4.2cm} p{4.6cm} p{4.6cm}}
+\toprule
+\textbf{Tiêu chí} & \textbf{Thủ công} & \textbf{Tự động (đã xây dựng)}\\
+\midrule
+Tính tái lập & Thấp, phụ thuộc người thao tác & Cao, tái lập từ Git\\
+Thời gian triển khai & Lâu, dễ sai sót & Nhanh, nhất quán\\
+Truy vết thay đổi & Khó & Có, qua lịch sử Git\\
+Khả năng khôi phục & Chậm & Đồng bộ lại từ Git\\
+Yêu cầu kỹ năng & Thấp & Cao hơn (đầu tư ban đầu)\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Thảo luận}
+\label{sec:thaoluan}
+
+Bảng~\ref{tab:uunhuoc} tổng hợp ưu điểm và hạn chế của hệ thống đã xây dựng.
+
+\begin{table}[htbp]
+\centering
+\caption{Ưu điểm và hạn chế của hệ thống}
+\label{tab:uunhuoc}
+\small
+\begin{tabular}{p{6.2cm} p{6.6cm}}
+\toprule
+\textbf{Ưu điểm} & \textbf{Hạn chế}\\
+\midrule
+Xác thực tập trung, một nguồn định danh duy nhất & Phụ thuộc vào IdP (điểm tin cậy tập trung)\\
+Cấu hình tái lập và truy vết qua Git & Đòi hỏi kỹ năng và công cụ hỗ trợ\\
+Sẵn sàng chạy nhiều bản sao và tự phục hồi & Chưa được kiểm chứng ở quy mô lớn\\
+Bảo mật theo lớp (TLS, MFA, RBAC) & Quản lý bí mật còn ở mức cơ bản\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Việc kết hợp xác thực tập trung với triển khai tự động cho thấy đây là hướng
+tiếp cận phù hợp: dịch vụ định danh vừa được chuẩn hóa về giao thức, vừa được
+vận hành có kiểm soát và tái lập. Các hạn chế nêu trên là cơ sở cho những nội
+dung phát triển tiếp theo được trình bày ở phần Kết luận.
+
+\section{Kết chương}
+
+Chương này đã trình bày kết quả kiểm thử chức năng, kết quả đánh giá bảo mật
+theo mô hình STRIDE, mức độ tự động hóa đạt được, đánh giá hiệu năng sơ bộ và so
+sánh với phương án triển khai thủ công.
